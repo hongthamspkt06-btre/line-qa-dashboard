@@ -922,6 +922,14 @@ function miniDelta(label, delta){
   return `<div class="row"><b>${label}</b><span class="${cls}">${arrow} ${delta===0?'0':sign+delta}</span></div>`;
 }
 
+// Own/ML/Support có thể là số lẻ (vd. 1.5 khi chia team cho 2 factory) và Support
+// có thể âm (biệt phái nhân sự sang team khác) — hiện gọn, không thừa ".0".
+function fmtQaNum(n){
+  const sign = n<0 ? '-' : '';
+  const abs = Math.abs(n);
+  return sign + (Number.isInteger(abs) ? String(abs) : abs.toFixed(1));
+}
+
 function requiredBase(n){
   // Base headcount for n lines on one factory, before backup: normally ceil(n/4),
   // EXCEPT when n>1 and leaves a remainder of exactly 1 (5, 9, 13, 21...), where
@@ -939,26 +947,28 @@ function computeFactoryQA(info, fac, useLastData){
   // Required QA for this factory alone = requiredBase(lines here) + 1 backup,
   // always — 1 backup person per factory is unconditional (Wal-mart in 4
   // factories gets 4 backups total, one per factory).
-  // Current QA uses the exact per-factory split supplied in the QA Manpower sheet
-  // (info.current_by_fac) for buyers that operate in more than one factory. For a
-  // buyer active in only one factory, its whole team is credited to that factory.
+  // Own/ML/Support/Current QA use the exact per-factory split supplied in the
+  // QA_Manpower.xlsx file (info.*_by_fac) for buyers that operate in more than
+  // one factory. For a buyer active in only one factory, its whole team is
+  // credited to that factory.
   const linesByFac = useLastData ? info.lines_by_fac_last : info.lines_by_fac;
   const linesHere = linesByFac[fac] || 0;
   const facsList = info.facs_list;
   const backupHere = linesHere > 0 ? 1 : 0;
   const requiredHere = linesHere > 0 ? requiredBase(linesHere) + backupHere : 0;
 
-  const split = info.current_by_fac || {};
-  let currentHere;
-  if(fac in split){
-    currentHere = split[fac];
-  } else if(facsList.length <= 1){
-    currentHere = info.available;
-  } else {
-    currentHere = 0; // no split given and buyer spans multiple factories — shouldn't normally happen
+  function pick(byFacMap, wholeTeamValue){
+    if(fac in byFacMap) return byFacMap[fac];
+    if(facsList.length <= 1) return wholeTeamValue;
+    return 0; // no split given and buyer spans multiple factories — shouldn't normally happen
   }
+  const ownHere = pick(info.own_by_fac || {}, info.own);
+  const mlHere = pick(info.ml_by_fac || {}, info.ml);
+  const supportHere = pick(info.support_by_fac || {}, info.support);
+  const currentHere = pick(info.current_by_fac || {}, info.available);
+
   const diffHere = currentHere - requiredHere;
-  return {lines:linesHere, required:requiredHere, current:currentHere, diff:diffHere, backup:backupHere};
+  return {lines:linesHere, required:requiredHere, own:ownHere, ml:mlHere, support:supportHere, current:currentHere, diff:diffHere, backup:backupHere};
 }
 
 function renderS3(){
@@ -975,20 +985,24 @@ function renderS3(){
   const computed = rows.map(([key,info])=>{
     if(allFacs){
       return {key, info, peakLines:info.lines, peakLinesLast:info.lines_last,
-        backup:info.factories, required:info.required, current:info.available, diff:info.gap,
+        backup:info.factories, required:info.required,
+        own:info.own, ml:info.ml, support:info.support,
+        current:info.available, diff:info.gap,
         requiredLast:info.required_last, diffLast:info.gap_last, shared:false};
     }
     const now = computeFactoryQA(info, fac, false);
     const prev = computeFactoryQA(info, fac, true);
     return {key, info, peakLines:now.lines, peakLinesLast:prev.lines,
-      backup:now.backup, required:now.required, current:now.current, diff:now.diff,
+      backup:now.backup, required:now.required,
+      own:now.own, ml:now.ml, support:now.support,
+      current:now.current, diff:now.diff,
       requiredLast:prev.required, diffLast:prev.diff, shared: info.facs_list.length>1};
   });
   // sort by status severity (deficit first)
   computed.sort((a,b)=> a.diff - b.diff);
 
   const bodyRows = computed.map(row=>{
-    const {key, info, peakLines, peakLinesLast, backup, required, current, diff, requiredLast, diffLast, shared} = row;
+    const {key, info, peakLines, peakLinesLast, backup, required, own, ml, support, current, diff, requiredLast, diffLast, shared} = row;
     const st = statusInfo(diff);
     if(st.cls==='deficit') deficitCount++; else if(st.cls==='sufficient') sufficientCount++; else surplusCount++;
     netGap += diff;
@@ -1015,6 +1029,9 @@ function renderS3(){
         <td><span class="cell-val">${peakLines}</span></td>
         <td>${facLabel}</td>
         <td><span class="cell-val">${required}</span></td>
+        <td><span class="cell-val">${fmtQaNum(own)}</span></td>
+        <td><span class="cell-val">${fmtQaNum(ml)}</span></td>
+        <td><span class="cell-val">${fmtQaNum(support)}</span></td>
         <td><span class="cell-val">${current}</span></td>
         <td><span class="qa-diff ${st.cls}">${diff>0?'+':''}${diff}</span></td>
         <td><span class="qa-status-pill ${st.cls}">${st.text}</span></td>
@@ -1036,6 +1053,7 @@ function renderS3(){
     table.innerHTML = `
       <thead><tr>
         <th>Buyer</th><th>Peak Lines</th><th>Backup (Factories)</th><th>Required QA</th>
+        <th>Own</th><th>ML</th><th>Support</th>
         <th>Current QA</th><th>Difference</th><th>Status</th><th>Remark</th><th>Δ vs. ${LAST_LABEL}</th>
       </tr></thead>
       <tbody>${bodyRows}</tbody>
@@ -1048,7 +1066,7 @@ function renderS3(){
     <span class="sum-chip"><b>${sufficientCount}</b> sufficient</span>
     <span class="sum-chip"><b>${deficitCount}</b> deficit</span>
     <span class="sum-chip">Net headcount balance: <b>${netGap>0?'+':''}${netGap}</b></span>
-    <span class="sum-chip">Required QA = ceil(peak lines ÷ 4) + 1 backup per factory · Current QA = staff + ML support${allFacs?'':' (per-factory split where a buyer spans multiple factories)'}</span>
+    <span class="sum-chip">Required QA = ceil(peak lines ÷ 4) + 1 backup per factory · Current QA = Own + ML + Support${allFacs?'':' (per-factory split where a buyer spans multiple factories)'}</span>
   `;
 }
 s3Month.addEventListener('change', renderS3);
