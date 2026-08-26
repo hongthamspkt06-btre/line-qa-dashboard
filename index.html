@@ -479,7 +479,7 @@
   <header>
     <div class="kicker">Production Planning · Line Schedule Matrix</div>
     <h1>Line Occupancy & QA Capacity</h1>
-    <p id="sourceLine">Weekly line assignments across 6 factories, rolled up by month, cross-checked against QA headcount. <span id="sourceDetail">Đang tải dữ liệu…</span></p>
+    <p id="sourceLine">Weekly line assignments across 6 factories</p>
     <div class="quarter-strip" id="quarterStrip"></div>
   </header>
 
@@ -490,7 +490,6 @@
         <span class="sec-title">Line Distribution by Buyer / Factory</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
-        <span class="sec-sub">Majority buyer per line, by month</span>
         <select id="s1-month"></select>
       </div>
     </div>
@@ -512,7 +511,6 @@
         <span class="sec-title">Schedule Changes</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
-        <span class="sec-sub">Update 7/13 vs. Update 7/20</span>
         <select id="wow-month"></select>
       </div>
     </div>
@@ -541,7 +539,6 @@
         <span class="sec-title">Monthly Line Comparison</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
-        <span class="sec-sub">Jul → Sep · Δ vs. previous month</span>
         <select id="s2-fac"></select>
       </div>
     </div>
@@ -561,7 +558,6 @@
         <span class="sec-title">QA Manpower Sufficiency</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
-        <span class="sec-sub">Required vs. current, by buyer</span>
         <select id="s3-month"></select>
       </div>
     </div>
@@ -575,15 +571,12 @@
     </div>
   </section>
 
-  <footer>
-    Generated from Line Schedule Matrix (Update 7/20) + QA Manpower sheet. "Majority buyer" = the buyer occupying a line on the most days within that month; days with no assignment are excluded from active-line counts.
-  </footer>
 
 </div>
 
 <script>
 // ==== CẤU HÌNH: dán URL Web App GAS (dạng .../exec) sau khi deploy ====
-const API_URL = 'https://script.google.com/macros/s/AKfycbyIKbR0DFmV0ey2Wv7BrQdgrn8ke2KUkBONLNnEJgo_sFmDxwEsOVJL4WtFtR_UTIc/exec';
+const API_URL = 'DÁN_GAS_WEBAPP_URL_VÀO_ĐÂY';
 
 function renderDashboard(DATA, THIS_LABEL, LAST_LABEL) {
 const MONTHS = DATA.months;
@@ -1076,9 +1069,6 @@ fetch(API_URL)
         data.meta.unrecognized_buyers.map(function(s){ return '"' + s + '"'; }).join(', ') +
         ' — thêm vào BUYER_MAP trong Calc.gs rồi tải lại trang.';
     }
-
-    document.getElementById('sourceDetail').textContent =
-      'Source: ' + data.meta.source_name + ' — ' + data.meta.total_lines + ' lines, ' + data.meta.total_days + ' scheduled days.';
 
     renderDashboard(data, data.meta.this_label, data.meta.last_label);
   })
