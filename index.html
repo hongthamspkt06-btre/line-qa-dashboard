@@ -1062,6 +1062,17 @@ fetch(API_URL)
   .then(function(data){
     document.getElementById('loadingBanner').style.display = 'none';
 
+    if (data.error) {
+      document.getElementById('errorBanner').style.display = 'block';
+      document.getElementById('errorBanner').textContent = '⚠ ' + data.message;
+      return;
+    }
+
+    if (data.meta && data.meta.generated_at_label) {
+      const sl = document.getElementById('sourceLine');
+      sl.textContent = 'Weekly line assignments across 6 factories · Cache cập nhật lúc ' + data.meta.generated_at_label + ' (tự làm mới mỗi 10 phút)';
+    }
+
     if (data.meta && data.meta.unrecognized_buyers && data.meta.unrecognized_buyers.length > 0) {
       const wb = document.getElementById('warnBanner');
       wb.style.display = 'block';
