@@ -448,7 +448,6 @@
 </head>
 <body>
 <div class="header-band-wrap"><div id="topHeader">LINE SCHEDULE & QA MANPOWER</div></div>
-<div id="loadingBanner" style="background:#1f2937;color:#fff;padding:10px 16px;font-family:inherit;">⏳ Đang tải dữ liệu mới nhất từ Google Drive…</div>
 <div id="errorBanner" style="display:none;background:#7f1d1d;color:#fff;padding:10px 16px;font-family:inherit;white-space:pre-wrap"></div>
 <div id="warnBanner" style="display:none;background:#7f1d1d;color:#fff;padding:10px 16px;font-family:inherit;"></div>
 <div class="wrap">
@@ -1048,8 +1047,6 @@ renderS3();
 fetch(API_URL)
   .then(function(r){ return r.json(); })
   .then(function(data){
-    document.getElementById('loadingBanner').style.display = 'none';
-
     if (data.error) {
       document.getElementById('errorBanner').style.display = 'block';
       document.getElementById('errorBanner').textContent = '⚠ ' + data.message;
@@ -1067,7 +1064,6 @@ fetch(API_URL)
     renderDashboard(data, data.meta.this_label, data.meta.last_label);
   })
   .catch(function(err){
-    document.getElementById('loadingBanner').style.display = 'none';
     const eb = document.getElementById('errorBanner');
     eb.style.display = 'block';
     eb.textContent = 'Lỗi khi tải dữ liệu từ Google Apps Script:\n' + err.message +
