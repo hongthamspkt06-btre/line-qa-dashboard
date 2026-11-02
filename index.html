@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Line Schedule & QA Capacity — Q3 2026</title>
+<title>Line Schedule & QA Capacity</title>
 <style>
   :root{
     --bg:#D5D8DC;
@@ -559,8 +559,51 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbyIKbR0DFmV0ey2Wv7BrQdgrn8ke2KUkBONLNnEJgo_sFmDxwEsOVJL4WtFtR_UTIc/exec';
 
 function renderDashboard(DATA, THIS_LABEL, LAST_LABEL) {
-const MONTHS = DATA.months;
+const RAW_MONTHS = DATA.months.slice();   // thứ tự gốc từ API (các mảng values theo index này)
 const MNAMES = DATA.month_names;
+
+// ---- Sắp xếp tháng theo thời gian + suy ra NĂM (header Excel chỉ có "MM/DD" hoặc ngày thật) ----
+// Các tháng luôn là 1 dải liên tục (vd 11 → 12 → 01). Nếu thứ tự API đã liên tục thì giữ nguyên,
+// nếu không (vd API sort ["01","11","12"]) thì xoay dải bắt đầu sau "khoảng trống" lớn nhất.
+function orderMonths(raw){
+  const num = m => parseInt(m,10);
+  const isChain = a => a.every((m,i)=> i===0 || ((num(m)-num(a[i-1])+12)%12)===1);
+  if(raw.length<=1 || isChain(raw)) return raw.slice();
+  const sorted = raw.slice().sort((a,b)=>num(a)-num(b));
+  let bestGap=-1, startIdx=0;
+  sorted.forEach((m,i)=>{
+    const nxt = sorted[(i+1)%sorted.length];
+    const gap = ((num(nxt)-num(m))+12)%12 || 12;
+    if(gap>bestGap){ bestGap=gap; startIdx=(i+1)%sorted.length; }
+  });
+  return sorted.slice(startIdx).concat(sorted.slice(0,startIdx));
+}
+const MONTHS = orderMonths(RAW_MONTHS);
+
+// Năm của tháng đầu: ưu tiên meta.start_year (nếu GAS gửi), không thì chọn năm gần "hôm nay" nhất
+const MONTH_YEAR = {};
+(function(){
+  const now = new Date();
+  const start = parseInt(MONTHS[0],10);
+  let y0 = DATA.meta && parseInt(DATA.meta.start_year,10);
+  if(!y0){
+    y0 = now.getFullYear();
+    let best = Infinity;
+    [now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1].forEach(y=>{
+      const d = Math.abs(new Date(y,start-1,1) - now);
+      if(d<best){ best=d; y0=y; }
+    });
+  }
+  let y = y0, prev = null;
+  MONTHS.forEach(mm=>{
+    const n = parseInt(mm,10);
+    if(prev!==null && n<prev) y++;          // qua tháng 12 → sang năm sau
+    MONTH_YEAR[mm] = y; prev = n;
+  });
+})();
+function monthLabel(mm){ return MNAMES[mm] + ' ' + MONTH_YEAR[mm]; }
+// Sắp xếp lại mảng giá trị (theo thứ tự API) về thứ tự thời gian
+function byTime(arr){ return MONTHS.map(mm => arr[RAW_MONTHS.indexOf(mm)]); }
 const COLORS = DATA.colors;
 const FACTORIES = DATA.factories;
 
@@ -575,7 +618,7 @@ function deltaBadge(delta){
 // ---------------- Section 1: distribution ----------------
 const s1Month = document.getElementById('s1-month');
 MONTHS.forEach(mm=>{
-  const o=document.createElement('option'); o.value=mm; o.textContent=MNAMES[mm]+' 2026'; s1Month.appendChild(o);
+  const o=document.createElement('option'); o.value=mm; o.textContent=monthLabel(mm); s1Month.appendChild(o);
 });
 s1Month.value = MONTHS[0];
 
@@ -651,7 +694,7 @@ renderS1();
 // ---------------- Schedule Changes section ----------------
 const wowMonth = document.getElementById('wow-month');
 MONTHS.forEach(mm=>{
-  const o=document.createElement('option'); o.value=mm; o.textContent=MNAMES[mm]+' 2026'; wowMonth.appendChild(o);
+  const o=document.createElement('option'); o.value=mm; o.textContent=monthLabel(mm); wowMonth.appendChild(o);
 });
 wowMonth.value = MONTHS[0];
 
@@ -770,7 +813,7 @@ function drawLineChart(container, tooltipEl, buyers, values){
     lbl.setAttribute('x', xFor(i)); lbl.setAttribute('y', H-8);
     lbl.setAttribute('text-anchor','middle');
     lbl.setAttribute('class','chart-axis-label');
-    lbl.textContent = MNAMES[mm];
+    lbl.textContent = monthLabel(mm);
     svg.appendChild(lbl);
   });
 
@@ -797,7 +840,7 @@ function drawLineChart(container, tooltipEl, buyers, values){
         const rect = container.getBoundingClientRect();
         tooltipEl.style.left = (xFor(i))+'px';
         tooltipEl.style.top = (yFor(v))+'px';
-        tooltipEl.textContent = `${b} · ${MNAMES[MONTHS[i]]}: ${v}`;
+        tooltipEl.textContent = `${b} · ${monthLabel(MONTHS[i])}: ${v}`;
         tooltipEl.style.opacity = 1;
       });
       dot.addEventListener('mouseleave', ()=>{ tooltipEl.style.opacity = 0; });
@@ -810,8 +853,10 @@ function drawLineChart(container, tooltipEl, buyers, values){
 
 function renderS2(){
   const fac = s2Fac.value;
-  const m = DATA.matrix[fac];
-  const buyers = m.buyers;
+  const mRaw = DATA.matrix[fac];
+  const buyers = mRaw.buyers;
+  const m = {buyers, values:{}};
+  buyers.forEach(b=>{ m.values[b] = byTime(mRaw.values[b]); });
 
   const box = document.getElementById('s2-chart-box');
   const tooltip = document.getElementById('s2-tooltip');
@@ -822,7 +867,7 @@ function renderS2(){
 
   // table
   const table = document.getElementById('s2-table');
-  let thead = `<thead><tr><th>Buyer</th>${MONTHS.map(mm=>`<th>${MNAMES[mm]}</th>`).join('')}</tr></thead>`;
+  let thead = `<thead><tr><th>Buyer</th>${MONTHS.map(mm=>`<th>${monthLabel(mm)}</th>`).join('')}</tr></thead>`;
   let tbody = '<tbody>';
   const monthTotals = MONTHS.map(()=>0);
   buyers.forEach(b=>{
@@ -865,7 +910,7 @@ window.addEventListener('resize', ()=>{
 
 // ---------------- Section 3: QA sufficiency ----------------
 const s3Month = document.getElementById('s3-month');
-MONTHS.forEach(mm=>{ const o=document.createElement('option'); o.value=mm; o.textContent=MNAMES[mm]+' 2026'; s3Month.appendChild(o); });
+MONTHS.forEach(mm=>{ const o=document.createElement('option'); o.value=mm; o.textContent=monthLabel(mm); s3Month.appendChild(o); });
 s3Month.value = MONTHS[0];
 
 const s3FacSelect = document.getElementById('s3-fac-select');
